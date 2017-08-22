@@ -22,3 +22,62 @@ FirstWeather是一款基于Android端开源的天气预报软件，具备查看�
 ![](https://github.com/wang911205/FirstWeather/blob/cabcbb406c6c871ba0e9d244335a3cf1ce805081/picture/swipeRefresh.png)
 ![](https://github.com/wang911205/FirstWeather/blob/cabcbb406c6c871ba0e9d244335a3cf1ce805081/picture/changeCity.png)
 ![](https://github.com/wang911205/FirstWeather/blob/cabcbb406c6c871ba0e9d244335a3cf1ce805081/picture/changeCity1.png)
+
+## 五、后台自动更新天气
+
+
+在Service包新建一个服务，创建一个类AutoUpdateService
+
+```ruby
+public class AutoUpdateService extends Service {
+
+    @Override
+    public IBinder onBind(Intent intent) {
+        // TODO: Return the communication channel to the service.
+        return null;
+    }
+
+    public int onStartCommand(Intent intent, int flags, int startId) {
+        updateWeather();
+        AlarmManager manager = (AlarmManager) getSystemService(ALARM_SERVICE);
+        int anHour = 8 * 60 * 60 * 1000; // 这是8小时的毫秒数
+        long triggerAtTime = SystemClock.elapsedRealtime() + anHour;
+        Intent i = new Intent(this, AutoUpdateService.class);
+        PendingIntent pi = PendingIntent.getService(this, 0, i, 0);
+        manager.cancel(pi);
+        manager.set(AlarmManager.ELAPSED_REALTIME_WAKEUP, triggerAtTime, pi);
+        return super.onStartCommand(intent, flags, startId);
+    }
+
+    /**
+     * 更新天气信息。
+     */
+    private void updateWeather(){
+        SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(this);
+        String weatherString = prefs.getString("weather", null);
+        if (weatherString != null) {
+            // 有缓存时直接解析天气数据
+            Weather weather = Utility.handleWeatherResponse(weatherString);
+            String weatherId = weather.basic.weatherId;
+            String weatherUrl = "http://guolin.tech/api/weather?cityid=" + weatherId + "&key=d25139a5d5e64f22bdaf1fb73f5e3b92";
+            HttpUtil.sendOkHttpRequest(weatherUrl, new Callback() {
+                @Override
+                public void onResponse(Call call, Response response) throws IOException {
+                    String responseText = response.body().string();
+                    Weather weather = Utility.handleWeatherResponse(responseText);
+                    if (weather != null && "ok".equals(weather.status)) {
+                        SharedPreferences.Editor editor = PreferenceManager.getDefaultSharedPreferences(AutoUpdateService.this).edit();
+                        editor.putString("weather", responseText);
+                        editor.apply();
+                    }
+                }
+
+                @Override
+                public void onFailure(Call call, IOException e) {
+                    e.printStackTrace();
+                }
+            });
+        }
+    }
+}
+```
